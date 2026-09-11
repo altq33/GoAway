@@ -25,7 +25,7 @@ func NewSecretRepository(conn *sql.DB) SecretRepository {
 	return &postgresSecretRepo{
 		dbConn: conn,
 		q:      db.New(conn),
-	}	
+	}
 }
 
 func (r *postgresSecretRepo) CreateSecret(ctx context.Context, arg db.CreateSecretParams) error {
