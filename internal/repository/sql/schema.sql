@@ -1,7 +1,16 @@
-CREATE TABLE users (
-    id BIGSERIAL PRIMARY KEY,
-    username VARCHAR(255) UNIQUE NOT NULL,
-    totp_secret VARCHAR(255) NOT NULL,
-    is_totp_verified BOOLEAN NOT NULL DEFAULT FALSE,
+CREATE TABLE secrets (
+    id VARCHAR(50) PRIMARY KEY, 
+    
+    encrypted_text TEXT NOT NULL,
+    
+    is_client_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+    
+    password_hash VARCHAR(255), 
+    
+    notify_email VARCHAR(255),
+    
+    file_path VARCHAR(500),
+    
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
