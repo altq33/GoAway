@@ -27,9 +27,39 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 }
 
 func (h *Handler) CreateSecret(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": "Ручка создания записки еще не готова",
-	})
+	var req CreateSecretRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Некорректный запрос",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	serviceReq := service.CreateSecretDTO{
+		Text:              req.Text,
+		IsClientEncrypted: req.IsClientEncrypted,
+		Password:          req.Password,
+		TTLHours:          req.TTLHours,
+	}
+
+	result, err := h.service.CreateSecret(ctx, serviceReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Не удалось создать записку, попробуйте позже",
+		})
+		return
+	}
+
+	resp := CreateSecretResponse{
+		ID:            result.ID,
+		EncryptionKey: result.EncryptionKey,
+	}
+
+	c.JSON(http.StatusCreated, resp)
 }
 
 func (h *Handler) GetSecretMeta(c *gin.Context) {
