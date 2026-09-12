@@ -34,9 +34,9 @@ type SecretMetaResponse struct {
 // ---------------------------------------------------------
 
 type ReadSecretRequest struct {
-	Password *string `json:"password,omitempty"`
+	Password      *string `json:"password"`
+	EncryptionKey *string `json:"encryptionKey"`
 }
-
 type ReadSecretResponse struct {
 	Text string `json:"text"`
 }

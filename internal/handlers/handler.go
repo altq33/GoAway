@@ -62,18 +62,53 @@ func (h *Handler) CreateSecret(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+// GetSecretMeta возвращает информацию о том, нужен ли пароль и ключ
 func (h *Handler) GetSecretMeta(c *gin.Context) {
 	id := c.Param("id")
 
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": "Ручка метаданных еще не готова, запрошен ID: " + id,
+	meta, err := h.service.GetSecretMeta(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, SecretMetaResponse{
+		IsClientEncrypted: meta.IsClientEncrypted,
+		HasPassword:       meta.RequiresPassword,
 	})
 }
 
+// ReadSecret проверяет пароль, расшифровывает и сжигает записку
 func (h *Handler) ReadSecret(c *gin.Context) {
 	id := c.Param("id")
 
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": "Ручка чтения еще не готова, запрошен ID: " + id,
+	var req ReadSecretRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Некорректный запрос",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	dto := service.ReadSecretDTO{
+		ID:            id,
+		Password:      req.Password,
+		EncryptionKey: req.EncryptionKey,
+	}
+
+	text, err := h.service.ReadSecret(c.Request.Context(), dto)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, ReadSecretResponse{
+		Text: text,
 	})
 }
