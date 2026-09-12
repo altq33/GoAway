@@ -9,7 +9,8 @@ INSERT INTO secrets (
 SELECT 
     id, 
     (password_hash IS NOT NULL)::boolean AS has_password, 
-    is_client_encrypted
+    is_client_encrypted,
+    expires_at,
 FROM secrets 
 WHERE id = $1 LIMIT 1;
 

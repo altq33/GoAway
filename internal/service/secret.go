@@ -2,23 +2,30 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
 	"goawayauth/internal/cryptoutil"
 	"goawayauth/internal/repository"
 	"goawayauth/internal/repository/db"
+	"log/slog"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type SecretService interface {
 	CreateSecret(ctx context.Context, req CreateSecretDTO) (CreateSecretResult, error)
-	GetSecretMeta(ctx context.Context, id string) error
-	ReadSecret(ctx context.Context, id string, password *string) error
+	GetSecretMeta(ctx context.Context, id string) (SecretMetaResult, error)
+	ReadSecret(ctx context.Context, req ReadSecretDTO) (string, error)
 }
 
 type secretService struct {
 	repo repository.SecretRepository
+}
+
+type SecretMetaResult struct {
+	IsClientEncrypted bool
+	RequiresPassword  bool
 }
 
 type CreateSecretDTO struct {
@@ -30,6 +37,12 @@ type CreateSecretDTO struct {
 
 type CreateSecretResult struct {
 	ID            string
+	EncryptionKey *string
+}
+
+type ReadSecretDTO struct {
+	ID            string
+	Password      *string
 	EncryptionKey *string
 }
 
@@ -70,11 +83,11 @@ func (s *secretService) CreateSecret(ctx context.Context, req CreateSecretDTO) (
 
 	expiresAt := time.Now().Add(time.Duration(req.TTLHours) * time.Hour)
 
-	err = s.repo.CreateSecret(ctx, db.CreateSecretParams{ // <-- Убедись, что пакет db импортирован правильно
+	err = s.repo.CreateSecret(ctx, db.CreateSecretParams{
 		ID:                id,
 		EncryptedText:     textToStore,
 		IsClientEncrypted: req.IsClientEncrypted,
-		PasswordHash:      toNullString(passwordHash), // Используем наш хелпер
+		PasswordHash:      db.ToNullString(passwordHash),
 		ExpiresAt:         expiresAt,
 	})
 
@@ -82,25 +95,79 @@ func (s *secretService) CreateSecret(ctx context.Context, req CreateSecretDTO) (
 		return CreateSecretResult{}, err
 	}
 
-	// 5. Успешный ответ
 	return CreateSecretResult{
 		ID:            id,
 		EncryptionKey: encryptionKey,
 	}, nil
 }
 
-func (s *secretService) GetSecretMeta(ctx context.Context, id string) error {
-	return errors.New("GetSecretMeta: логика еще не написана")
-}
-
-func (s *secretService) ReadSecret(ctx context.Context, id string, password *string) error {
-	return errors.New("ReadSecret: логика еще не написана")
-}
-
-// маленькая утилита-хелпер для чистой конвертации
-func toNullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{}
+func (s *secretService) checkExpiration(ctx context.Context, id string, expiresAt time.Time) error {
+	if time.Now().After(expiresAt) {
+		_ = s.repo.DeleteSecret(ctx, id)
+		return errors.New("срок действия записки истек")
 	}
-	return sql.NullString{String: *s, Valid: true}
+	return nil
+}
+
+func (s *secretService) ReadSecret(ctx context.Context, req ReadSecretDTO) (string, error) {
+	secret, err := s.repo.GetSecretForRead(ctx, req.ID)
+	if err != nil {
+		return "", errors.New("записка не найдена или уже была прочитана")
+	}
+	if err := s.checkExpiration(ctx, secret.ID, secret.ExpiresAt); err != nil {
+		return "", err
+	}
+
+	if secret.PasswordHash.Valid { // Вспоминаем нашу sql.NullString
+		if req.Password == nil || *req.Password == "" {
+			return "", errors.New("требуется пароль")
+		}
+
+		err = bcrypt.CompareHashAndPassword([]byte(secret.PasswordHash.String), []byte(*req.Password))
+		if err != nil {
+			return "", errors.New("неверный пароль")
+		}
+	}
+
+	var resultText string = secret.EncryptedText
+
+	if !secret.IsClientEncrypted {
+
+		if req.EncryptionKey == nil || *req.EncryptionKey == "" {
+			return "", errors.New("для расшифровки требуется ключ (encryptionKey)")
+		}
+
+		decryptedText, err := cryptoutil.DecryptTextAES(secret.EncryptedText, *req.EncryptionKey)
+		if err != nil {
+			return "", errors.New("не удалось расшифровать записку: " + err.Error())
+		}
+		resultText = decryptedText
+
+	}
+
+	err = s.repo.DeleteSecret(ctx, req.ID)
+	if err != nil {
+		slog.Error("Не удалось удалить прочитанную записку",
+			slog.String("secret_id", req.ID),
+			slog.Any("error", err),
+		)
+	}
+
+	return resultText, nil
+}
+
+func (s *secretService) GetSecretMeta(ctx context.Context, id string) (SecretMetaResult, error) {
+	secret, err := s.repo.GetSecretMeta(ctx, id)
+	if err != nil {
+		return SecretMetaResult{}, errors.New("записка не найдена или уже была прочитана")
+	}
+
+	if err := s.checkExpiration(ctx, id, secret.ExpiresAt); err != nil {
+		return SecretMetaResult{}, err
+	}
+
+	return SecretMetaResult{
+		IsClientEncrypted: secret.IsClientEncrypted,
+		RequiresPassword:  secret.HasPassword,
+	}, nil
 }

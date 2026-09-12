@@ -120,7 +120,8 @@ const getSecretMeta = `-- name: GetSecretMeta :one
 SELECT 
     id, 
     (password_hash IS NOT NULL)::boolean AS has_password, 
-    is_client_encrypted
+    is_client_encrypted,
+    expires_at
 FROM secrets 
 WHERE id = $1 LIMIT 1
 `
@@ -129,11 +130,17 @@ type GetSecretMetaRow struct {
 	ID                string
 	HasPassword       bool
 	IsClientEncrypted bool
+	ExpiresAt         time.Time
 }
 
 func (q *Queries) GetSecretMeta(ctx context.Context, id string) (GetSecretMetaRow, error) {
 	row := q.db.QueryRowContext(ctx, getSecretMeta, id)
 	var i GetSecretMetaRow
-	err := row.Scan(&i.ID, &i.HasPassword, &i.IsClientEncrypted)
+	err := row.Scan(
+		&i.ID,
+		&i.HasPassword,
+		&i.IsClientEncrypted,
+		&i.ExpiresAt,
+	)
 	return i, err
 }

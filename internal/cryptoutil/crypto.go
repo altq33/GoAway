@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -59,4 +60,45 @@ func EncryptTextAES(text string) (string, string, error) {
 
 	// Возвращаем (текст, ключ, nil)
 	return hex.EncodeToString(encryptedBytes), hex.EncodeToString(key), nil
+}
+
+// DecryptTextAES расшифровывает текст алгоритмом AES-256-GCM
+func DecryptTextAES(encryptedHex, keyHex string) (string, error) {
+	// 1. Декодируем hex-строки обратно в сырые байты
+	key, err := hex.DecodeString(keyHex)
+	if err != nil {
+		return "", errors.New("неверный формат ключа")
+	}
+	encryptedBytes, err := hex.DecodeString(encryptedHex)
+	if err != nil {
+		return "", errors.New("неверный формат зашифрованных данных")
+	}
+
+	// 2. Инициализируем шифр
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	// 3. Достаем Nonce
+	nonceSize := aesGCM.NonceSize()
+	if len(encryptedBytes) < nonceSize {
+		return "", errors.New("поврежденные данные: слишком короткий текст")
+	}
+
+	// Отрезаем nonce (первые 12 байт) и сам зашифрованный текст (всё остальное)
+	nonce := encryptedBytes[:nonceSize]
+	ciphertext := encryptedBytes[nonceSize:]
+
+	// 4. Расшифровываем (метод Open делает обратное методу Seal)
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errors.New("ошибка расшифровки: неверный ключ или данные повреждены")
+	}
+
+	return string(plaintext), nil
 }
