@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,7 +41,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("🚀 Сервер стартует на http://localhost:%s", cfg.Port)
+		slog.Info("Сервер запущен", slog.String("порт", cfg.Port))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("Ошибка запуска сервера", "error", err)
 		}
@@ -63,6 +62,6 @@ func main() {
 		slog.Error("Принудительная остановка сервера", "error", err)
 	}
 
-	slog.Info("Сервер успешно остановлен. До свидания!")
+	slog.Info("Сервер успешно остановлен")
 
 }
