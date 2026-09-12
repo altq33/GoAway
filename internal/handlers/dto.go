@@ -5,7 +5,7 @@ package handlers
 // ---------------------------------------------------------
 
 type CreateSecretRequest struct {
-	Text string `json:"text" binding:"required"`
+	Text string `json:"text" binding:"required,max=100000"`
 
 	IsClientEncrypted bool `json:"isClientEncrypted"`
 
